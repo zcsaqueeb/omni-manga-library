@@ -1,0 +1,66 @@
+// OmniLibrary database — accounts with private per-user libraries.
+// Each user owns their own favorites, history and settings; nobody else can
+// see or modify them.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+/// A registered user. Passwords are stored as scrypt hashes (salt embedded).
+model Account {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  sessions Session[]
+  favorites Favorite[]
+  history   HistoryEntry[]
+}
+
+/// Opaque session tokens (httpOnly cookie `ol_session`), 30-day sliding life.
+model Session {
+  token     String   @id
+  accountId String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId])
+}
+
+/// A favorited title. `data` holds the full MediaItem JSON so the library
+/// renders without re-querying sources.
+model Favorite {
+  id        String   @id @default(cuid())
+  accountId String
+  itemId    String // "<source>:<realId>"
+  data      String // JSON-serialized MediaItem
+  createdAt DateTime @default(now())
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([accountId, itemId])
+  @@index([accountId, createdAt])
+}
+
+/// "Continue reading" history. One row per item, newest first via viewedAt.
+model HistoryEntry {
+  id        String   @id @default(cuid())
+  accountId String
+  itemId    String
+  data      String // JSON-serialized MediaItem
+  viewedAt  DateTime @default(now())
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([accountId, itemId])
+  @@index([accountId, viewedAt])
+}
